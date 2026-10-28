@@ -1,0 +1,29 @@
+--- UNISG_v1.0.3/warfare.script
++++ Sin_v2.0_Combined/warfare.script
+@@ -488,6 +488,8 @@
+     end
+ 
+     unisg_hq_restore()
++    -- Sin HQ 2.0: restore mine HQ only in saved Warfare / Story OFF.
++    zzzzzz_walo_sin_hq_core.apply_loaded()
+ 
+     actor_faction = get_actor_true_community() or alife():actor():community():sub(7)
+     warfare_log.info("actor_on_first_update: actor_faction=%s", actor_faction)
+@@ -1088,6 +1090,8 @@
+     end
+ 
+     SIMBOARD.start_position_filled = true
++    -- Sin HQ 2.0: classify/move HQ before native ownership seeding.
++    zzzzzz_walo_sin_hq_core.apply_new_game()
+     warfare_levels.open_graph_gated_smarts()
+     printf("[WALO UNISG native v0.8] native fill_start_position reached")
+ 
+@@ -1679,6 +1683,8 @@
+ end
+ 
+ function on_game_start()
++    -- Revert transient Sin HQ registry/slots from the prior save.
++    zzzzzz_walo_sin_hq_core.on_walo_start()
+     -- Reverse ephemeral modifications before WALO initializes another saved game.
+     -- In particular Story Mode must inherit the original 1.6.11 HQ registry.
+     unisg_hq_reset_registration()

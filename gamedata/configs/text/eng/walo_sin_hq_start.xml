@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<string_table>
+    <string id="sim_default_greh_medic_task_1_name"><text>Medical supplies for the Sin medic</text></string>
+    <string id="sim_default_greh_medic_task_1_text"><text>Bring one drug-making kit to the Sin medic in the Red Forest mine.</text></string>
+    <string id="sim_default_greh_medic_task_1_about"><text>I need a drug-making kit to expand our medical stock. Bring me one and I can offer more supplies.</text></string>
+    <string id="sim_default_greh_medic_task_1_fetch_about"><text>Deliver one drug-making kit to the Sin medic.</text></string>
+    <string id="sim_default_greh_medic_task_1_fetch_finish"><text>Here is the kit. Can you stock better medical supplies now?</text></string>
+</string_table>

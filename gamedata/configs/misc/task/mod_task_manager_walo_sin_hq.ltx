@@ -1,0 +1,27 @@
+; WALO Sin HQ v0.9 - standard GAMMA medical kit fetch quest for Warfare Sin medic.
+; Config merges into the game task manager via DLTX. Scoped to the sim_default_greh_medic
+; character section, which already has dm_ordered_task_dialog in GAMMA.
+; This infoportion is the one read by drugkit_task_done() in trade_generic_medic.ltx.
+
+[sim_default_greh_medic_task_1]
+icon = ui_inGame2_D_Sisshik
+prior = 50
+repeat_timeout = 43200
+storyline = false
+precondition = {-sim_default_greh_medic_drugkit_done =walo_sin_hq_mode_enabled()} true, false
+
+title = sim_default_greh_medic_task_1_name
+title_functor = general_fetch_task
+descr = sim_default_greh_medic_task_1_text
+descr_functor = general_fetch_task
+job_descr = sim_default_greh_medic_task_1_about
+fetch_descr = sim_default_greh_medic_task_1_fetch_about
+task_complete_descr = sim_default_greh_medic_task_1_fetch_finish
+
+stage_complete = 1
+status_functor = actor_has_fetch_item
+target_functor = general_fetch_task
+fetch_func = %=setup_generic_fetch_task(sim_default_greh_medic_task_1_fetch:1:itm_drugkit)%
+on_complete = %=reward_stash(true) +sim_default_greh_medic_drugkit_done =fetch_reward_and_remove(sim_default_greh_medic_task_1_fetch:1.5) =complete_task_inc_goodwill(50:greh) =inc_task_stage(sim_default_greh_medic_task_1) =pstor_reset(sim_default_greh_medic_task_1_fetch) =drx_sl_unregister_task_giver(sim_default_greh_medic_task_1) =drx_sl_reset_stored_task(sim_default_greh_medic_task_1)%
+on_fail = %=pstor_reset(sim_default_greh_medic_task_1_fetch) =drx_sl_unregister_task_giver(sim_default_greh_medic_task_1) =drx_sl_reset_stored_task(sim_default_greh_medic_task_1)%
+condlist_0 = {!task_giver_alive(sim_default_greh_medic_task_1)} fail

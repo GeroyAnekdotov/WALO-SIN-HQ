@@ -1,0 +1,282 @@
+-- WALO Sin HQ 2.0 Core. Additive integration on top of UNISG 1.0.3/WALO 1.6.11.
+-- No permanent smart/HQ/max_population LTX changes. No manually spawned squads.
+local MINE = "red_smart_terrain_3_2"
+local CAMP = "red_smart_terrain_4_2"
+local REQUIRED = {
+    [MINE] = {base = 1, resource = 0, territory = 0, lair = 0, greh = 1},
+    [CAMP] = {base = 0, resource = 1, territory = 0, lair = 0},
+}
+local registered = false
+local previous_properties = {}
+local previous_capacity = nil
+local slots_before = nil
+local installed_props_hook = nil
+local announced = false
+
+local function log(message)
+    printf("[Sin HQ 2.0 Core] %s", message)
+end
+
+local function redone_north()
+    return ini_sys and ini_sys.section_exist
+        and ini_sys:section_exist("kat_greh_trader_squad")
+        and ini_sys:r_string_ex("kat_greh_trader_squad", "target_smart") == "katacomb_smart_terrain"
+end
+
+-- Two-phase guard follows UNISG's battle-tested pattern. New-game transient
+-- checkbox precedes the story_mode_disabled infoportion. Loaded games require both.
+function mode()
+    if not (IsWarfare and IsWarfare()) then return false, "warfare-off" end
+    if redone_north() then return false, "redone-north" end
+    local cfg = axr_main and axr_main.config
+    local chosen_faction = cfg and cfg:r_value("character_creation", "new_game_faction", 3)
+    if chosen_faction and chosen_faction ~= "" then
+        if cfg:r_value("character_creation", "new_game_story_mode", 1) == true then
+            return false, "new-game-story-on"
+        end
+        return true, "new-game-story-off"
+    end
+    if has_alife_info and has_alife_info("story_mode_disabled")
+        and IsStoryMode and not IsStoryMode() then
+        return true, "saved-story-off"
+    end
+    return false, "story-on-or-unresolved"
+end
+
+function enabled()
+    local ok = mode()
+    return ok
+end
+
+local function find_smart(name)
+    if not SIMBOARD then return nil end
+    local value = SIMBOARD.smarts_by_names and SIMBOARD.smarts_by_names[name]
+    if type(value) == "number" and alife_object then return alife_object(value) end
+    if value then return value end
+    if SIMBOARD.get_smart_by_name then return SIMBOARD:get_smart_by_name(name) end
+    return nil
+end
+
+local function patch_props(obj)
+    if not (obj and obj.name and obj.props) then return end
+    local name = obj:name()
+    local updates = REQUIRED[name]
+    if not updates then return end
+    local old = previous_properties[name]
+    if not old or old.object ~= obj or old.props ~= obj.props then
+        old = {object = obj, props = obj.props, values = {}}
+        for key in pairs(updates) do
+            old.values[key] = {value = obj.props[key]}
+        end
+        previous_properties[name] = old
+    end
+    for key, value in pairs(updates) do obj.props[key] = value end
+end
+
+-- Handle any late simulation_objects.get_props() refresh. Because this wrapper
+-- only touches the two named smarts under the mode gate, Story stays original.
+local function install_props_hook()
+    local sim = simulation_objects
+    if not sim or type(sim.get_props) ~= "function" then return end
+    if sim.get_props == installed_props_hook then return end
+    local before = sim.get_props
+    installed_props_hook = function(obj, ...)
+        local result = before(obj, ...)
+        if registered and enabled() then patch_props(obj) end
+        return result
+    end
+    sim.get_props = installed_props_hook
+end
+
+local function prepare_smart(name)
+    local obj = find_smart(name)
+    if not obj then return nil end
+    if not obj.props and simulation_objects and simulation_objects.get_props then
+        simulation_objects.get_props(obj)
+    end
+    patch_props(obj)
+    return obj
+end
+
+local function register_base()
+    if registered then return true end
+    local sw = smart_terrain_warfare
+    if not (sw and sw.set_main_base and sw.get_main_base_faction) then return false end
+    -- Refuse to overwrite arbitrary HQs registered by other mods.
+    if sw.get_main_base_faction(CAMP) ~= "greh"
+        or sw.get_main_base_faction(MINE) ~= nil then
+        log("HQ registry was changed externally; skipping relocation")
+        return false
+    end
+    sw.set_main_base(CAMP, nil)
+    -- The mine originally has travel_hub=1, so carry it through the relocation.
+    sw.set_main_base(MINE, {faction = "greh", protect = true, resurrect = true, travel_hub = 1})
+    registered = true
+    return true
+end
+
+local function reset_base()
+    if not registered then return end
+    local sw = smart_terrain_warfare
+    if sw and sw.set_main_base and sw.get_main_base_faction then
+        if sw.get_main_base_faction(MINE) == "greh" then
+            -- Restore the mine's original travel hub. Clearing the entry entirely
+            -- would silently alter Warfare even in a later Story Mode save.
+            sw.set_main_base(MINE, {travel_hub = 1})
+        end
+        if not sw.get_main_base_faction(CAMP) then
+            -- Original 1.6.11 HQ registration: protect=true, resurrect=true.
+            sw.set_main_base(CAMP, {faction = "greh", protect = true, resurrect = true})
+        end
+    end
+    registered = false
+end
+
+local function register_services()
+    local uniques = smart_terrain_warfare and smart_terrain_warfare.uniques
+    if not uniques then return end
+    local slots = uniques[MINE]
+    if not slots then
+        slots = {0, 0, 0, 0, 0}
+        uniques[MINE] = slots
+        slots_before = {slots = slots, created = true}
+    elseif not slots_before or slots_before.slots ~= slots then
+        slots_before = {slots = slots, original = {}}
+        for i = 1, 5 do slots_before.original[i] = slots[i] end
+    end
+    -- Original scripted trader and mechanic already exist. WALO notices them,
+    -- spawning only missing medic and barman through its native unique loop.
+    for i = 1, 4 do slots[i] = math.max(1, tonumber(slots[i]) or 0) end
+    slots[5] = slots[5] or 0
+end
+
+local function reset_services()
+    if not slots_before then return end
+    local old = slots_before
+    local uniques = smart_terrain_warfare and smart_terrain_warfare.uniques
+    if uniques and uniques[MINE] == old.slots then
+        if old.created then
+            if old.slots[1] == 1 and old.slots[2] == 1 and old.slots[3] == 1
+                and old.slots[4] == 1 and old.slots[5] == 0 then
+                uniques[MINE] = nil
+            end
+        elseif old.original then
+            for i = 1, 4 do
+                if old.slots[i] == math.max(1, tonumber(old.original[i]) or 0) then
+                    old.slots[i] = old.original[i]
+                end
+            end
+        end
+    end
+    slots_before = nil
+end
+
+local function set_capacity(mine)
+    if not mine then return end
+    if not previous_capacity or previous_capacity.object ~= mine then
+        previous_capacity = {
+            object = mine,
+            default = mine.default_max_population,
+            max = mine.max_population,
+        }
+    end
+    local factor = (warfare and warfare.get_stalker_pop_factor
+        and tonumber(warfare.get_stalker_pop_factor())) or 1
+    if factor <= 0 then factor = 1 end
+    -- WALO bootstrap scales default_max_population by the faction pop factor.
+    -- 4 / factor ensures four EFFECTIVE squad slots at any difficulty setting.
+    mine.default_max_population = 4 / factor
+    mine.max_population = 4 / factor
+    if mine.first_update and smart_terrain_warfare
+        and smart_terrain_warfare.set_max_population then
+        smart_terrain_warfare.set_max_population(mine)
+    end
+    previous_capacity.applied_default = mine.default_max_population
+    previous_capacity.applied_max = mine.max_population
+end
+
+local function apply(origin)
+    if not enabled() then return end
+    local mine = find_smart(MINE)
+    local surface = find_smart(CAMP)
+    if not (mine and surface) then
+        log("smart unavailable at " .. origin .. "; skip unsafe HQ changes")
+        return
+    end
+    if not register_base() then return end
+    -- Only after the native HQ registry has been migrated may we replace
+    -- smart properties. A conflicting HQ mod must not receive a partial swap.
+    install_props_hook()
+    mine = prepare_smart(MINE)
+    surface = prepare_smart(CAMP)
+    register_services()
+    set_capacity(mine)
+    if not announced then
+        announced = true
+        log("active at " .. origin .. ": mine HQ, surface resource, four squad slots")
+    end
+end
+
+-- Native Warfare new-game callback, before initial squad placement.
+function apply_new_game()
+    local ok, why = mode()
+    if ok and why == "new-game-story-off" then apply("new-game") end
+end
+
+-- After loading an existing save, but before first Warfare world tick.
+function apply_loaded()
+    local ok, why = mode()
+    if ok and why == "saved-story-off" then apply("saved-game") end
+end
+
+local function register_task_condition()
+    if xr_conditions then
+        xr_conditions.walo_sin_hq_mode_enabled = function(actor, npc, p)
+            return enabled() and db and db.actor ~= nil
+        end
+    end
+end
+
+-- Restore only smart objects that remain identically reachable in SIMBOARD.
+-- Lua references from a previous save are NEVER dereferenced directly.
+local function restore_live_smart_values()
+    for name, old in pairs(previous_properties) do
+        local live = find_smart(name)
+        if live and live == old.object and live.props == old.props then
+            for key, record in pairs(old.values) do
+                if live.props[key] == REQUIRED[name][key] then
+                    live.props[key] = record.value
+                end
+            end
+        end
+    end
+    previous_properties = {}
+    local old = previous_capacity
+    if old then
+        local mine = find_smart(MINE)
+        if mine and mine == old.object then
+            if mine.default_max_population == old.applied_default then
+                mine.default_max_population = old.default
+            end
+            if mine.max_population == old.applied_max then
+                mine.max_population = old.max
+            end
+        end
+    end
+    previous_capacity = nil
+end
+
+-- Invoked by the combined WALO warfare.script on EVERY start, including Story.
+function on_walo_start()
+    register_task_condition()
+    restore_live_smart_values()
+    reset_base()
+    reset_services()
+    announced = false
+    install_props_hook()
+end
+
+-- Also register if this module's regular script bootstrap runs later than WALO.
+function on_game_start()
+    register_task_condition()
+end

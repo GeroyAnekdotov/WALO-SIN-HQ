@@ -1,0 +1,274 @@
+-- WALO Sin HQ v1.3: compatibility with UNMODIFIED Science Bunker Trade Inheritance v1.4.
+-- Routes original story merchant and generated Sin traders; medic/barman remain mine-only.
+-- Does not modify global GAMMA trade_greh / trade_generic_* files.
+-- In-game validation required: no executable test environment is available here.
+
+local MINE_SMART = "red_smart_terrain_3_2"
+-- Scientific bunkers keep their own trade identity regardless of who captures them.
+local SCIENCE_BUNKERS = {
+    yan_smart_terrain_6_4 = true, -- Sakharov
+    jup_b41 = true,             -- Hermann
+}
+local PREFIX = "items\\trade\\"
+local TRADE = {
+    trader = PREFIX .. "trade_walo_greh_mine_trader.ltx",
+    medic = PREFIX .. "trade_generic_medic.ltx",
+    barman = PREFIX .. "trade_generic_barman.ltx",
+}
+local SPOTS = {
+    medic = "ui_pda2_medic_location",
+    barman = "ui_pda2_barman_location",
+}
+local installed_function = nil
+local last_marker_check = 0
+local last_logged = {}
+local tracked_spots = {}
+
+local function enabled()
+    return IsWarfare and IsWarfare() and db and db.actor
+end
+
+local function get_role_name(name)
+    if type(name) ~= "string" then return nil end
+    -- Both the story merchant and every WALO-spawned Sin trader use the
+    -- same weapon/equipment profile. Keep this faction-specific.
+    if name:match("^red_greh_trader%d*$") then return "trader" end
+    if name:match("^sim_default_greh_trader[%d_]*$") then return "trader" end
+    if name:match("^sim_default_greh_medic%d*$") then return "medic" end
+    if name:match("^sim_default_greh_barman%d*$") then return "barman" end
+    return nil
+end
+
+local function log_once(id, msg)
+    if last_logged[id] then return end
+    last_logged[id] = true
+    if warfare_log and warfare_log.info then
+        warfare_log.info("Sin HQ v1.0 trade: %s", msg)
+    else
+        printf("Sin HQ v1.0 trade: %s", msg)
+    end
+end
+
+local function get_mine()
+    if not SIMBOARD or not SIMBOARD.get_smart_by_name then return nil end
+    return SIMBOARD:get_smart_by_name(MINE_SMART)
+end
+
+-- Identical smart resolution priority to Science Bunker Trade Inheritance.
+-- An NPC may not have gulag_name immediately after its first spawn.
+local function npc_assigned_smart(npc)
+    if not npc then return nil end
+    local id = npc:id()
+    local st = db and db.storage and db.storage[id]
+    if st and st.gulag_name and st.gulag_name ~= "" then
+        return st.gulag_name
+    end
+    if xr_gulag and xr_gulag.get_npc_smart then
+        local ok, smart = pcall(xr_gulag.get_npc_smart, npc)
+        if ok and smart then
+            for _, method in ipairs({"name", "section_name"}) do
+                if smart[method] then
+                    local ok_name, name = pcall(function() return smart[method](smart) end)
+                    if ok_name and name and name ~= "" then return name end
+                end
+            end
+        end
+    end
+    if alife_object then
+        local ok, se = pcall(alife_object, id)
+        if ok and se and se.m_smart_terrain_id and se.m_smart_terrain_id ~= 65535 then
+            local ok_smart, server_smart = pcall(alife_object, se.m_smart_terrain_id)
+            if ok_smart and server_smart then
+                for _, method in ipairs({"name", "section_name"}) do
+                    if server_smart[method] then
+                        local ok_name, name = pcall(function() return server_smart[method](server_smart) end)
+                        if ok_name and name and name ~= "" then return name end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function is_mine_service(npc, role)
+    if not (enabled() and role and npc) then return false end
+    -- Sin traders use the same profile faction-wide. Generated medic/barman
+    -- profiles and map icons remain scoped to the mine.
+    if role == "trader" then
+        -- CRITICAL: Sin HQ's faction-wide trade router must not override
+        -- the science specialization of captured Ecologist bunkers.
+        local smart = npc_assigned_smart(npc)
+        if smart and SCIENCE_BUNKERS[smart] then return false end
+        return true
+    end
+    local mine = get_mine()
+    if not mine then return false end
+    local st = db.storage and db.storage[npc:id()]
+    if st and st.gulag_name == MINE_SMART then return true end
+    local groups = SIMBOARD.smarts and SIMBOARD.smarts[mine.id]
+    local squads = groups and groups.squads
+    if not squads then return false end
+    for sid in pairs(squads) do
+        local squad = sid and alife_object(sid)
+        if squad and squad.squad_members then
+            for member in squad:squad_members() do
+                if member.id == npc:id() then return true end
+            end
+        end
+    end
+    return false
+end
+
+-- When Science Bunker v1.4 rewrites the scientific supply tier for the current
+-- owner, the native trade_manager.update must use the SAME faction. Otherwise
+-- native GAMMA selects the Ecologist tier and Science v1.4 changes it back,
+-- causing perpetual stock restocking on each update.
+-- Modify only the in-memory cached buy_supplies condlist of Sin traders at the
+-- two scientific bunkers. Never patch the scientific LTX or Science v1.4 itself.
+local SCIENCE_TRADE_PATHS = {
+    yan_smart_terrain_6_4 = PREFIX .. "trade_ecolog_sakharov.ltx",
+    jup_b41 = PREFIX .. "trade_ecolog_hermann.ltx",
+}
+local cached_science_levels = {}
+
+local function normalize_path(path)
+    if type(path) ~= "string" then return nil end
+    return string.lower(string.gsub(path, "/", "\\"))
+end
+
+local function sync_science_supply_condlist(npc)
+    if not (enabled() and npc and npc.name and trade_manager
+        and trade_manager.get_trade_profile and xr_logic and xr_logic.parse_condlist) then return end
+    if get_role_name(npc:name()) ~= "trader" then return end
+    local smart = npc_assigned_smart(npc)
+    local desired_path = smart and SCIENCE_TRADE_PATHS[smart]
+    if not desired_path then return end
+
+    local id = npc:id()
+    local tm = trade_manager.get_trade_profile(id)
+    if not (tm and normalize_path(tm.cfg_ltx) == normalize_path(desired_path)) then return end
+    local faction = nil
+    if character_community then
+        local ok, value = pcall(character_community, npc)
+        if ok then faction = value end
+    end
+    if (not faction or faction == "none" or faction == "trader") and npc.character_community then
+        local ok, value = pcall(function() return npc:character_community() end)
+        if ok then faction = value end
+    end
+    if not faction or faction == "none" or faction == "trader" then return end
+
+    local cfg = tm.config
+    if not cfg and trade_manager.get_trade_cfg then
+        cfg = trade_manager.get_trade_cfg(tm.cfg_ltx)
+    end
+    if not (cfg and cfg.r_string_ex) then return end
+    local raw = cfg:r_string_ex("trader", "buy_supplies")
+    if not raw or raw == "" then return end
+    local rewritten = raw
+    local replacements = 0
+    for _, name in ipairs({"actor_goodwill_ge", "actor_goodwill_gt", "actor_goodwill_le", "actor_goodwill_lt"}) do
+        local old = name .. "%(%s*ecolog%s*:"
+        local changed, count = string.gsub(rewritten, old, name .. "(" .. faction .. ":")
+        rewritten = changed
+        replacements = replacements + count
+    end
+    if replacements == 0 then return end
+    local prev = cached_science_levels[id]
+    if prev and prev.profile == tm.cfg_ltx and prev.raw == rewritten
+        and tm.buy_supplies == prev.condlist then return end
+
+    local condlist = xr_logic.parse_condlist(npc, "trader", "buy_supplies", rewritten)
+    if not condlist then return end
+    tm.buy_supplies = condlist
+    cached_science_levels[id] = {profile = tm.cfg_ltx, raw = rewritten, condlist = condlist}
+end
+
+local function install_trade_router()
+    if not trade_manager or type(trade_manager.trade_init) ~= "function" then return end
+    if installed_function then return end  -- never wrap Science v1.4 again
+    local previous = trade_manager.trade_init
+    local previous_update = trade_manager.update
+    local function patched_trade_init(npc, trade_ini, ...)
+        local role = npc and npc.name and get_role_name(npc:name())
+        if role and is_mine_service(npc, role) then
+            trade_ini = TRADE[role]
+            log_once(npc:id(), string.format("NPC=%s role=%s trade=%s", npc:name(), role, trade_ini))
+        end
+        local result = previous(npc, trade_ini, ...)
+        sync_science_supply_condlist(npc)
+        return result
+    end
+    installed_function = patched_trade_init
+    trade_manager.trade_init = patched_trade_init
+    if type(previous_update) == "function" then
+        trade_manager.update = function(npc, ...)
+            sync_science_supply_condlist(npc)
+            return previous_update(npc, ...)
+        end
+    end
+end
+
+local function update_spots()
+    if not enabled() then return end
+    local mine = get_mine()
+    local board = mine and SIMBOARD.smarts and SIMBOARD.smarts[mine.id]
+    if not (board and board.squads) then return end
+    local active = {}
+    local sim = alife()
+    for sid in pairs(board.squads) do
+        local squad = sid and alife_object(sid)
+        if squad and squad.squad_members then
+            for member in squad:squad_members() do
+                local se_obj = member.object or (member.id and sim:object(member.id))
+                if se_obj and se_obj.alive then
+                    local name = se_obj:name()
+                    local role = get_role_name(name)
+                    local spot = role and SPOTS[role]
+                    if spot then
+                        active[se_obj.id] = spot
+                        if level.map_has_object_spot(se_obj.id, spot) == 0 then
+                            level.map_add_object_spot_ser(se_obj.id, spot, se_obj:character_name())
+                            log_once("spot_" .. tostring(se_obj.id),
+                                string.format("PDA marker=%s NPC=%s", spot, name))
+                        end
+                        tracked_spots[se_obj.id] = spot
+                    end
+                end
+            end
+        end
+    end
+    -- Remove spots of disappeared or reassigned NPCs, without touching other icons.
+    for id, spot in pairs(tracked_spots) do
+        if active[id] ~= spot then
+            if level.map_has_object_spot(id, spot) ~= 0 then
+                level.map_remove_object_spot(id, spot)
+            end
+            tracked_spots[id] = nil
+        end
+    end
+end
+
+local function on_first_update()
+    install_trade_router()
+    update_spots()
+end
+
+local function on_update()
+    local now = time_global()
+    if now < last_marker_check + 10000 then return end
+    last_marker_check = now
+    -- Do not rewrap trade_manager.trade_init on every 10s update.
+    -- That used to stack wrappers with Science Bunker Trade Inheritance.
+    update_spots()
+end
+
+function on_game_start()
+    last_marker_check = 0
+    last_logged = {}
+    tracked_spots = {}
+    install_trade_router()
+    RegisterScriptCallback("actor_on_first_update", on_first_update)
+    RegisterScriptCallback("actor_on_update", on_update)
+end

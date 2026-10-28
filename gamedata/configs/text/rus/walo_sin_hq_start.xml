@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+    <string id="sim_default_greh_medic_task_1_name"><text>Медицинский набор для медика Греха</text></string>
+    <string id="sim_default_greh_medic_task_1_text"><text>Принесите медику Греха в шахте Рыжего леса один набор для изготовления лекарств.</text></string>
+    <string id="sim_default_greh_medic_task_1_about"><text>Мне нужен набор для изготовления лекарств. Принеси его, и у меня появятся дополнительные медикаменты.</text></string>
+    <string id="sim_default_greh_medic_task_1_fetch_about"><text>Доставить медику Греха один медицинский набор.</text></string>
+    <string id="sim_default_greh_medic_task_1_fetch_finish"><text>Вот набор. Теперь у тебя появятся дополнительные лекарства?</text></string>
+</string_table>

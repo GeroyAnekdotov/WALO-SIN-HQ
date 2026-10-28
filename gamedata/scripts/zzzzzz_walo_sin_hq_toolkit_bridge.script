@@ -1,0 +1,58 @@
+-- WALO Sin HQ v0.9: make the story Sin mechanic respect Warfare tool tiers.
+-- The normal toolkit_task_done() checks npc:section()_upgrade_tier_N.
+-- Dazhbog uses section red_greh_tech, while WALO unlocks
+-- sim_default_greh_mechanic_upgrade_tier_N from standard tool fetch quests.
+-- Read those existing flags without inventing any story-tier infoportions.
+
+local previous = nil
+local installed = nil
+local last_sync = 0
+local function enabled()
+    return IsWarfare and IsWarfare() and warfare
+       and warfare.actor_faction == "greh" and db and db.actor
+end
+
+local function install_condition()
+    if not (xr_conditions and type(xr_conditions.toolkit_task_done) == "function") then return end
+    if xr_conditions.toolkit_task_done == installed then return end
+    local old = xr_conditions.toolkit_task_done
+    local function wrapper(actor, npc, p)
+        if old(actor, npc, p) then return true end
+        if not enabled() or not (npc and p and p[1]) then return false end
+        if npc:section() ~= "red_greh_tech" then return false end
+        local tier = tonumber(p[1])
+        if not tier or tier < 1 or tier > 3 then return false end
+        return has_alife_info("sim_default_greh_mechanic_upgrade_tier_" .. tier)
+    end
+    previous, installed = old, wrapper
+    xr_conditions.toolkit_task_done = wrapper
+end
+
+-- If the story tech's own original quest has ALREADY awarded a tier, propagate
+-- only into WALO's existing, confirmed infoportion. No story flags are created.
+local function sync_existing_story_unlocks()
+    if not enabled() then return end
+    local now = time_global()
+    if now - last_sync < 10000 then return end
+    last_sync = now
+    for tier = 1, 3 do
+        local story = "red_greh_tech_upgrade_tier_" .. tier
+        local faction = "sim_default_greh_mechanic_upgrade_tier_" .. tier
+        if has_alife_info(story) and not has_alife_info(faction) then
+            give_info(faction)
+        end
+    end
+end
+
+local function update()
+    install_condition()
+    sync_existing_story_unlocks()
+end
+
+function on_game_start()
+    last_sync = 0
+    previous, installed = nil, nil
+    install_condition()
+    RegisterScriptCallback("actor_on_first_update", update)
+    RegisterScriptCallback("actor_on_update", update)
+end
