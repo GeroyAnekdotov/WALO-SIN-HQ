@@ -1,8 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
-# Preserve the imported test baseline, including the Windows-1251 Russian XML.
+# Preserve runtime encodings and line endings, including Windows-1251 XML.
 gamedata/** -text
-/TESTING_RU.md -text
-/INTEGRATION/INSTALLED_* -text
-/INTEGRATION/UNISG_1.0.3_to_UNISG_plus_Sin_warfare.patch -text

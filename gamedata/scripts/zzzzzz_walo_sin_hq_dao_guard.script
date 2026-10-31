@@ -1,0 +1,83 @@
+-- Narrow DAO creation filter. Saved anomalies and native fields are never removed.
+-- Same delegation approach as UNISG's DAO guard, at the final position-aware API:
+-- neighbouring smarts can also pick a point inside the mine.
+local LEVEL = "l10_red_forest"
+-- Occupied lower mine: measured service/sleep points plus stock mine camp/guard
+-- jobs. Vertical limits exclude the surface. This is not a whole-smart blacklist.
+BOUNDS = {min = {-173.5, 0, -46}, max = {-144, 6, -15}}
+
+local installed_on, wrapped_spawn
+local warned_changed, warned_existing, blocked = false, false, false
+
+local function log(message) printf("[Sin HQ DAO guard] %s", message) end
+local function enabled()
+    local core = zzzzzz_walo_sin_hq_core
+    return core and core.enabled and core.enabled()
+        and level and level.name() == LEVEL
+end
+local function inside(pos)
+    if not pos then return false end
+    local lo, hi = BOUNDS.min, BOUNDS.max
+    return pos.x >= lo[1] and pos.x <= hi[1] and pos.y >= lo[2] and pos.y <= hi[2]
+        and pos.z >= lo[3] and pos.z <= hi[3]
+end
+
+local function on_target_level(gvid)
+    if not gvid then return false end
+    local vertex = game_graph():vertex(gvid)
+    return vertex and alife():level_name(vertex:level_id()) == LEVEL
+end
+
+local function install()
+    local dao = drx_da_main
+    if not (dao and type(dao.drx_da_spawn_anomaly) == "function") then return end
+    if installed_on == dao then
+        if dao.drx_da_spawn_anomaly ~= wrapped_spawn and not warned_changed then
+            warned_changed = true
+            log("DAO creation handler changed after installation; check wrapper delegation")
+        end
+        return -- never wrap a later wrapper again, including across save loads
+    end
+    local previous = dao.drx_da_spawn_anomaly
+    wrapped_spawn = function(anomaly_type, pos, lvid, gvid, level_file, ...)
+        if enabled() and inside(pos) and on_target_level(gvid) then
+            if not blocked then
+                blocked = true
+                log("blocked new dynamic anomaly inside the occupied mine; saved objects left alone")
+            end
+            return nil -- native callers add bookkeeping only when an ID was returned
+        end
+        return previous(anomaly_type, pos, lvid, gvid, level_file, ...)
+    end
+    installed_on = dao
+    dao.drx_da_spawn_anomaly = wrapped_spawn
+    log("installed position filter for the occupied Red Forest mine")
+end
+
+local function inspect_saved()
+    if warned_existing or not enabled() then return end
+    local dao = drx_da_main
+    local data = dao and dao.updated_anomaly_levels and dao.updated_anomaly_levels[LEVEL]
+    if not (data and type(data.anomalies) == "table") then return end
+    warned_existing = true
+    local count = 0
+    for _, id in pairs(data.anomalies) do
+        local obj = alife_object(id)
+        if obj and IsAnomaly(nil, obj:clsid()) and on_target_level(obj.m_game_vertex_id)
+            and inside(obj.position) then count = count + 1 end
+    end
+    if count > 0 then
+        log(tostring(count) .. " DAO-tracked anomalies already exist inside the mine; no deletion performed")
+    end
+end
+
+local function first_update()
+    warned_changed, warned_existing, blocked = false, false, false
+    install()
+    inspect_saved()
+end
+
+function on_game_start()
+    install() -- before DAO's first actor update can schedule new generation
+    RegisterScriptCallback("actor_on_first_update", first_update)
+end

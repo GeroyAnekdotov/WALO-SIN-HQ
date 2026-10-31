@@ -1,0 +1,182 @@
+-- Native exclusive beh jobs for the two generated SIN services only.
+-- No NPC creation/teleport, trader/mechanic changes, or replacement AI scheme.
+local SMART = "red_smart_terrain_3_2"
+local MEDIC_BEH = "beh@walo_sin_hq_medic"
+local BYPASS_VERTEX = 5182
+local BYPASS_VISITED = "walo_sin_hq_medic_bypass_v1"
+local SEAT_RADIUS = 0.8 -- WALO/UNISG's seated-arrival allowance
+local installed_on, wrapped_path, wrapped_waypoint
+local installed_logic
+local seat
+
+local function enabled()
+    local core = zzzzzz_walo_sin_hq_core
+    return core and core.enabled and core.enabled()
+end
+
+-- Exclusive-job suitable predicates receive server objects; beh uses clients.
+-- Exact sections preserve named SIN/Story NPCs and other factions' services.
+function suitable(actor, npc, params)
+    local role = params and params[1]
+    if not (enabled() and npc and (role == "medic" or role == "barman")) then return false end
+    local obj = npc
+    if type(npc.id) == "function" then obj = alife_object(npc:id()) end
+    if not (obj and obj:section_name() == "sim_default_greh_" .. role) then return false end
+    local smart = SIMBOARD and SIMBOARD.smarts_by_names and SIMBOARD.smarts_by_names[SMART]
+    if type(smart) == "number" then smart = alife_object(smart) end
+    return smart and smart.owning_faction == "greh" and obj.m_smart_terrain_id == smart.id or false
+end
+
+local function refresh_seat()
+    seat = nil
+    local plan = zzzzzz_walo_sin_hq_interior_layout
+    if not plan then return end
+    for _, piece in ipairs(plan.build(function(_, y) return y end)) do
+        if piece.key == "medic_chair" then
+            seat = vector():set(piece.pos[1], piece.pos[2], piece.pos[3])
+            return
+        end
+    end
+end
+
+local function pack(...) return {n = select("#", ...), ...} end
+local function own_medic(self)
+    local npc = self.object
+    local st = npc and db.storage[npc:id()]
+    return st and st.active_section == MEDIC_BEH and suitable(nil, npc, {"medic"})
+end
+
+local function install()
+    xr_conditions.walo_sin_hq_service_job = suitable
+    local logic = smart_terrain
+    if logic and type(logic.setup_gulag_and_logic_on_spawn) == "function" and installed_logic ~= logic then
+        local previous_init = logic.setup_gulag_and_logic_on_spawn
+        logic.setup_gulag_and_logic_on_spawn = function(npc, st, server, stype, loaded, ...)
+            if st then st._walo_sin_saved_seat = nil end
+            -- Assigned smart jobs bypass xr_logic.initialize_obj entirely.
+            -- Remember a loaded medic at the chair at the actual spawn entry;
+            -- the waypoint wrapper still requires our exact active job, Core
+            -- gate and greh-owned mine before it can consume this evidence.
+            if st and seat and npc and server and level.name() == "l10_red_forest"
+                and server:section_name() == "sim_default_greh_medic" then
+                local near = npc:position():distance_to(seat) < SEAT_RADIUS
+                if loaded and near then
+                    st._walo_sin_saved_seat = true
+                end
+            end
+            return previous_init(npc, st, server, stype, loaded, ...)
+        end
+        installed_logic = logic
+    end
+    local target = axr_beh and axr_beh.action_beh
+    if not (target and type(target.beh_path) == "function"
+        and type(target.get_current_waypoint) == "function") or installed_on == target then return end
+    local previous_waypoint = target.get_current_waypoint
+    wrapped_waypoint = function(self, ...)
+        if own_medic(self) then
+            self.st.path_reverse = nil -- this private route is forward-only
+            -- Native path_index is shared by beh jobs and is saved. An old job
+            -- must not select pt2 without this NPC having reached the bypass.
+            local index = self.st.path_index
+            if index == 1 and seat and level.name() == "l10_red_forest"
+                and (load_var(self.object, BYPASS_VISITED, false)
+                    or db.storage[self.object:id()]._walo_sin_saved_seat) and self.object:alive()
+                and not self.object:best_enemy() and not self.object:is_talking()
+                and self.object:position():distance_to(seat) < SEAT_RADIUS then
+                -- Native finalize saves path_index=1 even at the chair. UNISG
+                -- resumes its single sitting waypoint here; SIN must select pt2
+                -- before native beh can send the restored medic back to pt1.
+                self.st.path_index = 2
+                self.st.wait_delay = nil
+                self.st.am_i_reached = nil
+                save_var(self.object, "path_index", 2)
+                save_var(self.object, BYPASS_VISITED, true)
+                db.storage[self.object:id()]._walo_sin_saved_seat = nil
+                index = 2
+            end
+            if (index ~= 1 and index ~= 2)
+                or (index == 2 and not load_var(self.object, BYPASS_VISITED, false)) then
+                self.st.path_index = 1
+                self.st.wait_delay = nil
+                self.st.am_i_reached = nil
+                save_var(self.object, "path_index", 1)
+            end
+            local path = self.st.desired_target
+            if path and path.index == 1 and path.animpoint then
+                -- Invalidate only the old one-point medic job's cached seat.
+                path.index = nil
+                self.st.wait_delay = nil
+                self.st.am_i_reached = nil
+            end
+        end
+        return previous_waypoint(self, ...)
+    end
+    local previous = target.beh_path
+    wrapped_path = function(self, ...)
+        local npc = self.object
+        local st = npc and db.storage[npc:id()]
+        local path = self.st and self.st.desired_target
+        if not (own_medic(self) and path and npc:alive() and not npc:best_enemy()
+            and not npc:is_talking()) then
+            return previous(self, ...)
+        end
+        if self.st.path_index == 1 and path.index == 1 and path.level_vertex_id == BYPASS_VERTEX
+            and path.delay_animation == "guard" and npc:level_vertex_id() == BYPASS_VERTEX
+            and not load_var(npc, BYPASS_VISITED, false) then
+            -- Record actual arrival, never a nearest-accessible fallback or a
+            -- distance estimate. Native beh owns the wait and advancement.
+            save_var(npc, BYPASS_VISITED, true)
+        end
+        if not (seat and path.index == 2 and path.level_vertex_id and path.animpoint
+            and path.delay_animation == "animpoint_sit_normal"
+            and load_var(npc, BYPASS_VISITED, false)) then
+            return previous(self, ...)
+        end
+        if npc:position():distance_to(seat) >= SEAT_RADIUS then
+            -- WALO's medic pattern: permit a fresh animpoint after walking back.
+            -- Never reset an already seated/standing NPC or force an animation.
+            local mgr = st.state_mgr
+            local state = mgr and state_lib.states[mgr.target_state]
+            if state and state.movement ~= nil and state.movement ~= move.stand then
+                mgr.animation_direction_applied = nil
+            end
+            return previous(self, ...)
+        end
+        -- A chair can be between graph cells. Use the native beh arrival rule
+        -- without standing the medic up just because the sit animation slid him.
+        local mgr = st.state_mgr
+        if mgr and mgr.animation and not mgr._walo_sin_seat_checked then
+            -- Per-manager, unsaved: a newly online NPC reaches here walking;
+            -- a local reload may retain a sitting request with no queued anim.
+            -- state_manager:set_state ignores an identical request. Re-enter it
+            -- once through native APIs, only when there is no animation to stop.
+            local queued = npc:animation_count()
+            local stale = mgr.target_state == path.delay_animation and queued == 0
+            if stale then
+                mgr.animation:set_state(nil, true)
+                state_mgr.set_state(npc, "idle")
+                mgr.animation_direction_applied = nil
+            end
+            mgr._walo_sin_seat_checked = true
+        end
+        local vertex = path.level_vertex_id
+        path.level_vertex_id = npc:level_vertex_id()
+        local results = pack(pcall(previous, self, ...))
+        path.level_vertex_id = vertex -- also restore when a delegated handler fails
+        if not results[1] then error(results[2], 0) end
+        return unpack(results, 2, results.n)
+    end
+    installed_on = target
+    target.get_current_waypoint = wrapped_waypoint
+    target.beh_path = wrapped_path
+end
+
+local function first_update()
+    refresh_seat()
+    install()
+end
+
+function on_game_start()
+    first_update()
+    RegisterScriptCallback("actor_on_first_update", first_update)
+end

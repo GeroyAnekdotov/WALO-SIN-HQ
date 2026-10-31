@@ -8,7 +8,8 @@ local previous = nil
 local installed = nil
 local last_sync = 0
 local function enabled()
-    return IsWarfare and IsWarfare() and warfare
+    local core = zzzzzz_walo_sin_hq_core
+    return core and core.enabled and core.enabled() and warfare
        and warfare.actor_faction == "greh" and db and db.actor
 end
 
@@ -17,6 +18,8 @@ local function install_condition()
     if xr_conditions.toolkit_task_done == installed then return end
     local old = xr_conditions.toolkit_task_done
     local function wrapper(actor, npc, p)
+        -- In Story/non-Warfare, preserve the original condition's exact result.
+        if not enabled() then return old(actor, npc, p) end
         if old(actor, npc, p) then return true end
         if not enabled() or not (npc and p and p[1]) then return false end
         if npc:section() ~= "red_greh_tech" then return false end
@@ -51,7 +54,7 @@ end
 
 function on_game_start()
     last_sync = 0
-    previous, installed = nil, nil
+    -- Keep the installed wrapper identity across loads; do not wrap it again.
     install_condition()
     RegisterScriptCallback("actor_on_first_update", update)
     RegisterScriptCallback("actor_on_update", update)

@@ -1,2 +1,26 @@
+# Local references, development history and installable artifacts
 /_reference/
 /_shared_reference/
+/INTEGRATION/
+/dist/
+/.venv/
+__pycache__/
+*.py[cod]
+
+# Local MO2 metadata, saves, runtime logs and crash evidence
+meta.ini
+*.scop
+*.scoc
+*.sav
+*.dds.bak
+*.[lL][oO][gG]
+*.[lL][oO][gG].*
+*.[mM][dD][mM][pP]
+*.[dD][mM][pP]
+*.[hH][dD][mM][pP]
+*.[bB][kK][pP]
+*.[eE][tT][lL]
+*.[wW][eE][rR]
+*.zip
+*.7z
+*.rar

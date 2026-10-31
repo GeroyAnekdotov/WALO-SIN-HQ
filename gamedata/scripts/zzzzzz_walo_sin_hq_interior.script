@@ -1,0 +1,230 @@
+-- SIN HQ furniture: WALO 1.6.11 physics/persistence and native sleep/workshop APIs.
+-- No service NPC spawning, job changes, DRX writes or changes to WALO's registries.
+local KEY = "walo_sin_hq_interior_v01"
+local TAG = "\n[walo_sin_hq_interior]\n" -- only our custom data is eligible for replacement
+local INTERVAL = 2000
+local complete, next_try, generation = false, 0, 0
+local warned = {}
+local sleep_ui, sleep_wrapper
+
+local function layout() return zzzzzz_walo_sin_hq_interior_layout end
+local function enabled()
+    local core = zzzzzz_walo_sin_hq_core
+    local plan = layout()
+    return plan and core and core.enabled and core.enabled() and db and db.actor
+        and level and level.name() == plan.LEVEL
+end
+local function log(message) printf("[Sin HQ interior] %s", message) end
+local function warn(key, message)
+    if not warned[key] then warned[key] = true; log(message) end
+end
+local function storage(create)
+    local state = alife_storage_manager.get_state()
+    if create and type(state[KEY]) ~= "table" then state[KEY] = {} end
+    return state[KEY]
+end
+local function vec(p) return vector():set(p[1], p[2], p[3]) end
+local function get_data(obj, piece)
+    if piece.section == "space_restrictor" then return utils_stpk.get_space_restrictor_data(obj) end
+    return utils_stpk.get_physic_data(obj)
+end
+local function set_data(data, obj, piece)
+    if piece.section == "space_restrictor" then return utils_stpk.set_space_restrictor_data(data, obj) end
+    return utils_stpk.set_physic_data(data, obj)
+end
+local function token(piece) return TAG .. "key = " .. piece.key .. "\n" end
+local function signature(piece)
+    return string.format("%.4f,%.4f,%.4f|%.5f|%s|%s|%s|%s", piece.pos[1], piece.pos[2], piece.pos[3],
+        piece.heading, piece.section, piece.visual or "", piece.fixed_bones or "", piece.ini or piece.radius or "")
+end
+
+local function resource_available(piece)
+    if not ini_sys:section_exist(piece.section) then return false, "section missing: " .. piece.section end
+    if piece.section == "space_restrictor" then return true end
+    local visual = piece.visual or ini_sys:r_string_ex(piece.section, "visual")
+    if not visual then return false, "visual missing: " .. piece.section end
+    if not visual:match("%.ogf$") then visual = visual .. ".ogf" end
+    if not getFS():exist("$game_meshes$", visual) then return false, "mesh missing in VFS: " .. visual end
+    return true
+end
+
+-- Same static ray API used by GAMMA's demonized_geometry_ray. A short bounded
+-- downcast cannot snap the table to a lower tunnel or to a high overhead pipe.
+local function floor_at(x, approximate_y, z)
+    if ray_pick then
+        local ok, hit_y = pcall(function()
+            local ray = ray_pick()
+            ray:set_flags(2) -- static level geometry only; ignore our own props
+            ray:set_range(0.8)
+            ray:set_position(vector():set(x, approximate_y + 0.35, z))
+            ray:set_direction(vector():set(0, -1, 0))
+            if ray:query() then return approximate_y + 0.35 - ray:get_distance() end
+        end)
+        if ok and hit_y and math.abs(hit_y - approximate_y) <= 0.4 then return hit_y end
+    end
+    warn("floor", "static floor ray unavailable/out of bounds; using supplied actor-height estimate for this first pass")
+    return approximate_y
+end
+
+local function configure(obj, piece)
+    obj.angle = vector():set(0, piece.heading, 0)
+    local data = get_data(obj, piece)
+    data.custom_data = (piece.ini or "") .. token(piece)
+    if piece.section == "space_restrictor" then
+        data.shapes = {{shtype = 0, offset = vector():set(0, 0, 0), radius = piece.radius}}
+        data.restrictor_type = 3 -- NOT_A_RESTRICTOR, never an NPC navigation barrier
+    else
+        if piece.visual then data.visual_name = piece.visual end
+        if piece.fixed_bones then data.fixed_bones = piece.fixed_bones end
+        -- Keep native physics type/mass. Zero mass is not a static-prop switch.
+    end
+    set_data(data, obj, piece)
+end
+
+local function ensure_piece(records, piece, gvid)
+    local record = records[piece.key]
+    if record and record.retiring_id then
+        if alife_object(record.retiring_id) then return false end
+        records[piece.key], record = nil, nil
+    end
+    local obj = record and record.id and alife_object(record.id)
+    if obj then
+        if obj:section_name() ~= piece.section then
+            warn(piece.key, "saved ID section conflict; leaving unknown object alone: " .. piece.key)
+            return false
+        end
+        local data = get_data(obj, piece)
+        if not (data.custom_data and data.custom_data:find(token(piece), 1, true)) then
+            warn(piece.key, "saved object lacks our tag; no duplicate or unsafe recovery: " .. piece.key)
+            return false
+        end
+        if record.signature ~= signature(piece) then
+            -- Only a tagged object of this module may be replaced for a new pose.
+            record.ready = false
+            alife_release(obj)
+            records[piece.key] = {retiring_id = record.id}
+            return false -- wait for unregister before creating its replacement
+        end
+        if not record.ready then configure(obj, piece); record.ready = true end
+    else
+        local available, reason = resource_available(piece)
+        if not available then warn(piece.key, reason); return false end
+        local lvid = warfare_utils.nearest_lvid(vec(piece.pos))
+        -- An elevated mattress can be outside the AI graph. Only while actually
+        -- beside it may its marker use the actor's valid nearby graph cell.
+        if not lvid and piece.key == "sleep_marker"
+            and db.actor:position():distance_to(vec(piece.pos)) < piece.radius then
+            lvid = db.actor:level_vertex_id()
+        end
+        if not lvid then warn(piece.key, "no AI vertex near " .. piece.key); return false end
+        obj = alife_create(piece.section, vec(piece.pos), lvid, gvid)
+        if not obj then warn(piece.key, "object creation failed: " .. piece.key); return false end
+        -- Reserve the ID before packet initialization can fail. An untagged partial
+        -- creation is held for inspection instead of spawning another object.
+        record = {id = obj.id, signature = signature(piece), ready = false}
+        records[piece.key] = record
+        configure(obj, piece)
+        record.ready = true
+    end
+    if piece.key == "sleep_marker" and level.map_has_object_spot(obj.id, "ui_pda2_actor_sleep_location") == 0 then
+        level.map_add_object_spot_ser(obj.id, "ui_pda2_actor_sleep_location", "st_ui_pda_sleep_place")
+    end
+    return true
+end
+
+local function owned_vice(id)
+    local records = storage(false)
+    local record = type(records) == "table" and records.workbench_vice
+    if not (record and record.ready and record.id == id) then return false end
+    local obj = alife_object(id)
+    if not (obj and obj:section_name() == layout().VICE_SECTION) then return false end
+    local data = utils_stpk.get_physic_data(obj)
+    return data.custom_data and data.custom_data:find(token({key = "workbench_vice"}), 1, true) ~= nil
+end
+
+local function physic_object_on_use_callback(obj, who)
+    -- Like the native WALO callback, rely on this object's use event and the
+    -- actor-distance check; do not assume an optional forwarded sender exists.
+    if not (enabled() and obj and owned_vice(obj:id())) then return end
+    if obj:position():distance_to(db.actor:position()) >= 1.5 then return end
+    local id, current_generation = obj:id(), generation -- never retain engine userdata in a timer
+    local function start_ui()
+        if current_generation ~= generation or not enabled() or not owned_vice(id) then return true end
+        local live = level.object_by_id(id)
+        if not live or live:position():distance_to(db.actor:position()) >= 1.5 then return true end
+        -- As for WALO's generated GAMMA vice: no invented mechanic/toolkit flags.
+        -- Native GAMMA/UI patches determine toolkits from inventory/nearby stashes.
+        local ui = ui_workshop and ui_workshop.get_workshop_ui(get_hud(), nil, {false, false, false, false, false})
+        if ui then ui:ShowDialog(true) end
+        return true
+    end
+    local delay = actor_effects.is_animations_on() and 2 or 0
+    actor_effects.play_item_fx("workshop_dummy")
+    CreateTimeEvent("walo_sin_hq_interior", "workbench", delay, start_ui)
+end
+
+local function near_sleep()
+    local plan = layout()
+    local options = plan and plan.sleep
+    return options and options.enabled and enabled()
+        and db.actor:position():distance_to(vec(options.pos)) < options.radius
+end
+
+local function install_sleep_hook()
+    local target = ui_sleep_dialog
+    if not (target and type(target.sleep_in_zone) == "function") then return end
+    if sleep_ui == target then return end -- preserve a later wrapper; never stack per load
+    local previous = target.sleep_in_zone
+    sleep_wrapper = function(actor, npc)
+        if near_sleep() then
+            give_info("sleep_active")
+            return target.sleep()
+        end
+        return previous(actor, npc)
+    end
+    sleep_ui = target
+    target.sleep_in_zone = sleep_wrapper
+end
+
+local function reset()
+    complete, next_try = false, 0
+    generation = generation + 1
+    warned = {}
+end
+
+local function actor_on_update()
+    if not enabled() then return end
+    install_sleep_hook()
+    local now = time_global()
+    if not complete and now >= next_try then
+        next_try = now + INTERVAL
+        local smart = warfare_utils.smart_on_actor_level(layout().SMART)
+        if smart then
+            local records = storage(true)
+            local all_ready = true
+            for _, piece in ipairs(layout().build(floor_at)) do
+                local ok, ready = pcall(ensure_piece, records, piece, smart.m_game_vertex_id)
+                if not ok then warn(piece.key, "initialization failed for " .. piece.key .. ": " .. tostring(ready)) end
+                if not ok or not ready then all_ready = false end
+            end
+            complete = all_ready
+            if complete then log("furnishing ready on Red Forest; native NPCs/jobs unchanged") end
+        end
+    end
+    if near_sleep() then
+        if not game.has_active_tutorial() and not has_alife_info("sleep_active") then
+            game.start_tutorial("tutorial_sleep")
+        end
+    else
+        -- Never stop a global tutorial: another mod may have taken ownership.
+        -- The native five-second prompt expires; the use hook rechecks distance/mode.
+    end
+end
+
+function on_game_start()
+    reset()
+    install_sleep_hook()
+    RegisterScriptCallback("actor_on_first_update", reset)
+    RegisterScriptCallback("actor_on_update", actor_on_update)
+    RegisterScriptCallback("physic_object_on_use_callback", physic_object_on_use_callback)
+end

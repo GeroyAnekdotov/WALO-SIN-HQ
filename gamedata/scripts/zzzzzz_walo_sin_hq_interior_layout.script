@@ -1,0 +1,122 @@
+-- SIN HQ furniture, adapted from WALO 1.6.11 warfare_base_props.script.
+-- The workbench now uses the author's exact model-origin position and fixed yaw.
+-- Other areas retain the first-pass actor anchors; attached props follow parents.
+LEVEL = "l10_red_forest"
+SMART = "red_smart_terrain_3_2"
+VICE_SECTION = "walo_sin_hq_workbench"
+
+local PROPS = [[dynamics\warfare_props\]]
+local TAU = 2 * math.pi
+local COLLIDE = "[collide]\nignore_static\n"
+local TABLE_TOP = COLLIDE .. "ignore_small_objects\n"
+local TABLE_ITEM = COLLIDE .. "small_object\n"
+local VICE_INI = "[logic]\nactive = ph_idle@walo_sin_hq_workbench\n\n"
+    .. "[ph_idle@walo_sin_hq_workbench]\ntips = st_tiski\n\n" .. COLLIDE
+
+-- Workbench: final object origin, no facing offsets, floor ray or pivot correction.
+-- Other areas: right/forward offsets from the player's original sampled facing.
+areas = {
+    workbench = {pos = {-156.07967, 2.1779747009277, -25.93725},
+        heading = 3.1506574156321507}, -- preserve the tested table rotation exactly
+    medic = {pos = {-156.97091674805, 2.1770622730255, -36.311023712158},
+        dir = {0.99961316585541, 0, -0.027811743319035}, right = 0, forward = 0.75},
+    bar = {pos = {-152.68267822266, 2.2003483772278, -18.737701416016},
+        dir = {-0.047073040157557, 0, -0.99889147281647}, right = 0, forward = 0.85},
+}
+
+-- The author confirmed this sample was taken standing on the existing mattress.
+-- Keep its elevated Y: projecting it to the mine floor would select another place.
+sleep = {enabled = true, pos = {-161.08793640137, 3.116215467453, -28.994010925293}, radius = 1.5}
+
+-- OGF v4 render-bound minima read from WALO's actual models. Keep separate from
+-- the measured ground: actor Y and model-origin Y are not interchangeable.
+local MIN_Y = {table = 0.0016651214100420475, barrel = 0.0014890560414642096, chair = 0}
+local CLEARANCE = 0.003
+
+local function frame(area)
+    local d = area.dir
+    local length = math.sqrt(d[1] * d[1] + d[3] * d[3])
+    local dx, dz = d[1] / length, d[3] / length
+    local h = vector():set(dx, 0, dz):getH()
+    return {x = area.pos[1] + dz * area.right + dx * area.forward,
+        y = area.pos[2], z = area.pos[3] - dx * area.right + dz * area.forward,
+        dx = dx, dz = dz, heading = h % TAU}
+end
+
+local function at(f, right, forward)
+    return f.x + f.dz * right + f.dx * forward, f.z - f.dx * right + f.dz * forward
+end
+
+function build(floor_at)
+    local list = {}
+    local function ground(key, f, right, forward, visual, bone, min_y, ini, turn)
+        local x, z = at(f, right, forward)
+        local y = floor_at(x, f.y, z) - min_y + CLEARANCE
+        local p = {key = key, section = "physic_object", visual = PROPS .. visual,
+            fixed_bones = bone, pos = {x, y, z}, heading = (f.heading + (turn or 0)) % TAU,
+            ini = ini or COLLIDE}
+        list[#list + 1] = p
+        return p
+    end
+    -- Transform the author's exact parent-relative offsets, including model yaw.
+    local function relative(key, parent, source_origin, source_heading, source_pos, source_yaw,
+            visual, bone, ini, section)
+        local dx, dz = source_pos[1] - source_origin[1], source_pos[3] - source_origin[3]
+        local side = dx * math.cos(source_heading) + dz * math.sin(source_heading)
+        local forward = -dx * math.sin(source_heading) + dz * math.cos(source_heading)
+        local h = parent.heading
+        local p = {key = key, section = section or "physic_object", visual = visual and PROPS .. visual,
+            fixed_bones = bone, ini = ini or COLLIDE,
+            pos = {parent.pos[1] + math.cos(h) * side - math.sin(h) * forward,
+                parent.pos[2] + source_pos[2] - source_origin[2],
+                parent.pos[3] + math.sin(h) * side + math.cos(h) * forward},
+            heading = (h + source_yaw - source_heading) % TAU}
+        list[#list + 1] = p
+        return p
+    end
+
+    local bench = {key = "workbench_table", section = "physic_object",
+        visual = PROPS .. "awr_stol_9a_mini", fixed_bones = "link", ini = TABLE_TOP,
+        pos = {unpack(areas.workbench.pos)}, heading = areas.workbench.heading}
+    list[#list + 1] = bench
+    relative("workbench_vice", bench, {-205.03261, 0.60585, 404.34882}, 0.90970,
+        {-204.85197, 1.45720, 404.22124}, 5.62133, nil, "link", VICE_INI, VICE_SECTION)
+
+    local med = frame(areas.medic)
+    local table_piece = ground("medic_table", med, 0, 0, "awr_stol_9a_mini", "link", MIN_Y.table, TABLE_TOP)
+    -- The polishing medic job aligns to this unchanged chair; no prop offset needed.
+    ground("medic_chair", med, 0, -1.05, "stul_wood_01", "link", MIN_Y.chair, nil, math.pi)
+    local origin, heading = {-171.83988, 2.43069, 416.76006}, 0.09232
+    relative("medic_medkit", table_piece, origin, heading, {-172.39860, 3.2837, 416.82884}, 0.39232,
+        "dev_aptechka_low", "bone01", TABLE_ITEM)
+    relative("medic_bandage", table_piece, origin, heading, {-172.17511, 3.2967, 416.90979}, -0.40768,
+        "dev_bandage", "bone01", TABLE_ITEM)
+    relative("medic_stim", table_piece, origin, heading, {-172.25072, 3.2977, 416.64168}, 1.29232,
+        "stim1", "bone01", TABLE_ITEM)
+    relative("medic_kit", table_piece, origin, heading, {-171.30329, 3.2847, 416.93025}, -0.10768,
+        "item_aptechka2", "link", TABLE_ITEM)
+
+    local bar = frame(areas.bar)
+    local left = ground("barrel_left", bar, -0.371, 0, "bochka_close_1", "barrel", MIN_Y.barrel, TABLE_TOP)
+    local right = ground("barrel_right", bar, 0.371, 0, "bochka_close_1", "barrel", MIN_Y.barrel, TABLE_TOP)
+    local front, side, yaw = {-173.74156, 1.3, 410.89403}, {-172.86815, 1.3, 411.47565}, 2.94367
+    relative("bar_plate", left, front, yaw, {-173.82, 2.39027, 410.90976}, yaw,
+        "kitchen_tarelka1", "link", TABLE_ITEM)
+    relative("bar_mug", left, front, yaw, {-173.53362, 2.39027, 411.01551}, yaw,
+        "kitchen_krujka", "bone01", TABLE_ITEM)
+    relative("bar_crate", right, side, yaw, {-172.86815, 2.39027, 411.47565}, yaw,
+        "box_bottle_1", "link", TABLE_ITEM)
+    local bottles = {
+        {-172.68377, 2.41027, 411.53047, 3.34367}, {-172.79946, 2.41027, 411.56387, 4.84367},
+        {-172.93282, 2.41027, 411.56001, 2.14367}, {-172.77603, 2.41027, 411.37558, 5.64367},
+        {-172.91723, 2.41027, 411.38350, 4.04367},
+    }
+    for i, p in ipairs(bottles) do
+        relative("bar_bottle_" .. i, right, side, yaw, p, p[4], "dev_vodka", "bone01", TABLE_ITEM)
+    end
+    if sleep.enabled then
+        list[#list + 1] = {key = "sleep_marker", section = "space_restrictor", pos = sleep.pos,
+            heading = 0, radius = sleep.radius}
+    end
+    return list
+end

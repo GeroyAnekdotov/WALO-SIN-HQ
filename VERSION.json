@@ -1,0 +1,23 @@
+{
+  "project": "WALO SIN HQ",
+  "version": "2.0.1",
+  "baseline": "SIN HQ 2.0 Core TEST",
+  "package_type": "FULL_MO2",
+  "history": [
+    {
+      "version": "2.0.1",
+      "change": "First stable release; tested gameplay retained, temporary medic diagnostic output removed."
+    },
+    {
+      "version": "2.0.1-test.2",
+      "change": "Capture local medic restoration at the actual assigned-smart spawn entry, which bypasses initialize_obj."
+    },
+    {
+      "version": "2.0.1-test.1",
+      "change": "Restore the saved SIN medic job at its chair when the bypass flag is absent after loading."
+    }
+  ],
+  "status": "stable",
+  "tag": "v2.0.1",
+  "tested_baseline": "2.0.1-test.2"
+}

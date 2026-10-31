@@ -1,0 +1,68 @@
+; Two generated SIN services, assigned by the smart's native exclusive-job loop.
+; The suitable callback uses Core.enabled(), exact sections and current smart ownership.
+[logic@walo_sin_hq_medic]
+suitable = {=walo_sin_hq_service_job(medic)} true
+trade = items\trade\trade_generic_medic.ltx
+prior = 200
+active = beh@walo_sin_hq_medic
+can_select_weapon = {=is_warfare} true, false
+dont_keep_items = true
+level_spot = medic
+
+[logic@walo_sin_hq_barman]
+suitable = {=walo_sin_hq_service_job(barman)} true
+trade = items\trade\trade_generic_barman.ltx
+prior = 200
+active = beh@walo_sin_hq_barman
+can_select_weapon = {=is_warfare} true, false
+dont_keep_items = true
+level_spot = barman
+
+; Same service/meet/combat pattern as WALO's Renegade HQ.
+[beh@walo_sin_hq_general]
+behavior_state = beh_move
+target = waypoint
+walk_dist = 100
+jog_dist = 220
+wait_anim = guard
+walk_anim = patrol
+jog_anim = patrol
+run_anim = rush
+delay_anim = guard
+use_camp = false
+meet = meet@walo_sin_hq_services
+combat_ignore_cond = {=is_warfare} false, {=actor_true_enemy =check_enemy_name(actor)} false, true
+combat_ignore_keep_when_attacked = {=is_warfare} false, true
+invulnerable = {=is_warfare} false, {!actor_true_enemy} true, false
+gather_items_enabled = false
+help_wounded_enabled = false
+corpse_detection_enabled = false
+
+[beh@walo_sin_hq_medic]:beh@walo_sin_hq_general
+; Exact player sample beside the table (measured level vertex 5182).
+; Native beh must reach this first; the seat helper never completes this point.
+pt1 = 500,guard | pos:-156.24475097656,2.1791143417358,-34.401062011719
+; UNISG/WALO seat convention: chair = animpoint + 0.5 * animation direction.
+; Preserve the existing sitting destination, chair and animation exactly.
+pt2 = 1000000000,animpoint_sit_normal | pos:-156.97091674805,2.1770622730255,-36.311023712158 animpoint:-156.770994,2.180062,-36.316586,-0.999613179,0,0.027811744
+path_end = loop
+
+[beh@walo_sin_hq_barman]:beh@walo_sin_hq_general
+; Reflect the old working point to the opposite side of the unchanged barrels.
+; Keep 0.95 m clearance from their midpoint and face back across the counter.
+pt1 = 1000000000,guard | pos:-152.677971,2.200348,-18.637812 look:-152.722690,2.200348,-19.586759
+path_end = loop
+
+[meet@walo_sin_hq_services]
+close_anim = nil
+close_victim = nil
+far_anim = nil
+far_victim = nil
+close_distance = 0
+far_distance = 0
+close_snd_distance = 3
+abuse = false
+use = {=actor_enemy} false, true
+allow_break = false
+meet_on_talking = false
+trade_enable = false

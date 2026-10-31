@@ -25,7 +25,8 @@ local last_logged = {}
 local tracked_spots = {}
 
 local function enabled()
-    return IsWarfare and IsWarfare() and db and db.actor
+    local core = zzzzzz_walo_sin_hq_core
+    return core and core.enabled and core.enabled() and db and db.actor
 end
 
 local function get_role_name(name)
@@ -191,6 +192,7 @@ local function install_trade_router()
     local previous = trade_manager.trade_init
     local previous_update = trade_manager.update
     local function patched_trade_init(npc, trade_ini, ...)
+        if not enabled() then return previous(npc, trade_ini, ...) end
         local role = npc and npc.name and get_role_name(npc:name())
         if role and is_mine_service(npc, role) then
             trade_ini = TRADE[role]
@@ -211,7 +213,17 @@ local function install_trade_router()
 end
 
 local function update_spots()
-    if not enabled() then return end
+    if not enabled() then
+        -- Only spots added by this module in the current game are ours to remove.
+        -- on_game_start drops old IDs before another save can reuse them.
+        for id, spot in pairs(tracked_spots) do
+            if level.map_has_object_spot(id, spot) ~= 0 then
+                level.map_remove_object_spot(id, spot)
+            end
+        end
+        tracked_spots = {}
+        return
+    end
     local mine = get_mine()
     local board = mine and SIMBOARD.smarts and SIMBOARD.smarts[mine.id]
     if not (board and board.squads) then return end
@@ -230,10 +242,10 @@ local function update_spots()
                         active[se_obj.id] = spot
                         if level.map_has_object_spot(se_obj.id, spot) == 0 then
                             level.map_add_object_spot_ser(se_obj.id, spot, se_obj:character_name())
+                            tracked_spots[se_obj.id] = spot
                             log_once("spot_" .. tostring(se_obj.id),
                                 string.format("PDA marker=%s NPC=%s", spot, name))
                         end
-                        tracked_spots[se_obj.id] = spot
                     end
                 end
             end
@@ -268,6 +280,7 @@ function on_game_start()
     last_marker_check = 0
     last_logged = {}
     tracked_spots = {}
+    cached_science_levels = {}
     install_trade_router()
     RegisterScriptCallback("actor_on_first_update", on_first_update)
     RegisterScriptCallback("actor_on_update", on_update)

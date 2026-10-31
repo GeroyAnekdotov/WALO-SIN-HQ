@@ -1,54 +1,53 @@
-# WALO SIN HQ 2.0 Core - Test Development Baseline
+# WALO SIN HQ 2.0.1
 
-This repository contains the installed **SIN HQ 2.0 Core test build**, dated 27 October 2026, prepared for further development on 28 October 2026. **This is a test version, not a final release.**
+SIN HQ moves WALO's SIN headquarters into the old mine in the Red Forest (`red_smart_terrain_3_2`) and gives it a furnished, usable interior. It is built for S.T.A.L.K.E.R. Anomaly GAMMA with **WALO 1.6.11** and **UNISG Command & Operations v1.0.3**.
 
-All eight files under `gamedata/` were imported unchanged from `WALO_Sin_HQ_2.0_Core_TEST_MO2` and checked by SHA-256. Repository preparation did not change gameplay or deploy anything to GAMMA.
+## What is included
 
-## Current scope
+- Trader and technician support through WALO's native service system, plus a seated medic and a bartender with dedicated work positions.
+- A functional GAMMA crafting workbench, a furnished medical area and bar, and sleeping at the mine's existing mattress.
+- A measured route around the medic's table and restoration of his sitting job after loading a save inside the HQ.
+- SIN trade routing and PDA service markers, Dazhbog toolkit support, and a medical-kit task with English and Russian text.
+- A bounded filter preventing new DAO dynamic anomalies from spawning in the occupied lower mine. Existing saved anomalies and stock anomaly fields are not removed.
 
-The Core module is designed for **Warfare ON / Story Mode OFF**. It relocates the native WALO SIN headquarters from the Red Forest surface camp (`red_smart_terrain_4_2`) to the mine (`red_smart_terrain_3_2`) through temporary Lua state. It requests four effective squad slots and native trader, mechanic, medic and barman service minima. WALO controls service spawning and timing.
+WALO still controls squad spawning, population, ownership, capture and service replacement. SIN HQ uses its existing systems rather than spawning a parallel set of service squads. The surface SIN camp becomes a resource point while the mine is the HQ.
 
-The test package also contains SIN trading, PDA service markers, Dazhbog toolkit compatibility, and a medic drugkit task with English and Russian text. It does not add furniture, seated AI jobs, beds, lights, sleep markers, DAO features or campfire extras.
+## Requirements
 
-**Story Mode isolation is unfinished.** The HQ Core and medic task have a Story Mode check, but the inherited trade/marker and toolkit modules do not use that check. They can still act in Warfare with Story Mode enabled when their other conditions match. This is a code finding; its in-game consequences have not been tested here. Developing complete SIN HQ disabling in Story Mode is the next task.
+- S.T.A.L.K.E.R. Anomaly with GAMMA and its DLTX, workshop and task systems.
+- **Warfare ALife Overhaul 1.6.11.**
+- **UNISG Command & Operations v1.0.3**, enabled as a separate mod.
 
-## Dependencies and MO2 layout
+The package includes a combined `warfare.script` for these specific WALO and UNISG versions. It is not a standalone replacement for another WALO version. The UNISG menu and other UNISG files come from the separate UNISG mod. Other versions and modpacks have not been established as compatible.
 
-The current combined test setup uses S.T.A.L.K.E.R. Anomaly GAMMA, **Warfare ALife Overhaul 1.6.11**, **UNISG Command & Operations v1.0.3**, and DLTX support. It relies on existing GAMMA trade, task, NPC and toolkit systems. Compatibility with other versions has not been established.
+## Installation with Mod Organizer 2
 
-For a future test installation:
+1. Back up your saves. Keep the previous working package for rollback.
+2. Install `WALO_SIN_HQ_2.0.1_FULL_MO2.zip` through MO2. The archive has `gamedata/` directly at its root.
+3. Disable older SIN HQ packages, including v1.3, development builds, position patches and diagnostic patches. Enable only this full SIN HQ package.
+4. Keep WALO 1.6.11 and UNISG Command & Operations v1.0.3 enabled. Give SIN HQ higher file priority than both, so its combined `warfare.script` wins.
+5. For the additional HQ mechanics, use **Warfare ON and Story Mode OFF**. Restart the game after replacing a package, then load a copy of your save or start a new game.
 
-1. Keep the older SIN HQ v1.3 disabled; do not stack it with 2.0.
-2. Enable the matching WALO and UNISG versions.
-3. Give SIN HQ higher MO2 file priority than both, so its combined `gamedata/scripts/warfare.script` wins. MO2 usually shows higher-priority mods lower in its left pane.
-4. Keep Science Bunker Trade Inheritance v1.4 as a separate mod if it is used. It is not embedded here. ReDone North is excluded by the Core's compatibility check; complete package isolation with it remains unverified.
-5. Back up saves and start testing with a fresh game before using long-term saves.
+No manual changes to GAMMA files, MO2 profiles or squad spawn points are needed. Updating from the tested `2.0.1-test.2` build does not require a new game. Older v1.3 saves are not automatically migrated.
 
-The installable payload is `gamedata/` at the archive root. Do not package `.git/`, `_reference/`, the shared library, or MO2's local metadata. No installation or profile change was performed during this preparation.
+## Warfare, Story Mode and DRX
 
-The existing `warfare.script` is **WALO + UNISG + SIN**, not a standalone SIN script. Comparison against v1.0.3 found only three added SIN calls and three accompanying comments; UNISG's existing code is preserved. Replacing it with stock WALO would lose UNISG integration. The UNISG menu remains supplied by the separate UNISG mod.
+The added HQ mechanics are enabled only with **Warfare ON / Story Mode OFF**. The existing Core mode check handles both new-game settings and ordinary save loading. The HQ changes are not limited to a SIN player character; the toolkit bridge retains its existing SIN actor restriction.
 
-## Files and development references
+With Story Mode enabled, or Warfare disabled, the addon does not activate its HQ relocation, furnishing, custom service jobs, trade routing, toolkit bridge or new PDA markers. It does not replace the original SIN Story/Mortal Sin characters, dialogue or quest chains. DRX storyline definitions are not modified. The addon's own medical-kit task is mode-gated; if an older save contains a pending copy in an unsupported mode, normal task handling ends that addon task as failed.
 
-| Location | Purpose |
-|---|---|
-| `gamedata/scripts/warfare.script` | Combined WALO/UNISG controller with three SIN lifecycle calls |
-| `gamedata/scripts/zzzzzz_walo_sin_hq_core.script` | Mode checks, HQ relocation, properties, capacity and service restoration |
-| `gamedata/scripts/zzzzz_walo_greh_mine_trade_spots.script` | SIN trade routing, bunker compatibility and PDA service markers |
-| `gamedata/scripts/zzzzzz_walo_sin_hq_toolkit_bridge.script` | Dazhbog toolkit compatibility |
-| `gamedata/configs/` | Trader stock, medic task and two localized string tables |
-| [AGENTS.md](AGENTS.md) | Development rules and read-only shared-library entry points |
-| [Development baseline](INTEGRATION/DEVELOPMENT_BASELINE.md) | Source comparison, dependencies, Story Mode gaps and next-step checks |
-| [Gameplay checksums](INTEGRATION/BASELINE_GAME_FILES_SHA256.txt) | Exact imported gameplay baseline; not a claim of game testing |
-| [Original package README](INTEGRATION/INSTALLED_README.md) | Preserved historical test-build notes |
-| [TESTING_RU.md](TESTING_RU.md) | Original Russian scenario checklist; not completed test results |
+This isolation is checked in source and mocked Lua scenarios. The author's final gameplay confirmation covers the HQ, services, furniture, crafting, sleeping, navigation, level transitions and save/load. A complete Story Mode or SIN DRX storyline playthrough is **not claimed** by this release.
 
-The shared reference library stays outside this repository at `../_shared_reference/`. Read its `INDEX.md` and `environments/GAMMA/ENVIRONMENT.md` through the rules in `AGENTS.md`; it is not bundled with this mod. Machine-specific paths and the current profile audit are kept in ignored `_reference/` notes.
+## Compatibility and saved games
 
-## Verification and limits
+- Other mods overriding `warfare.script` require a deliberate merge. Changing MO2 priority cannot combine two different controllers.
+- Science Bunker Trade Inheritance v1.4 remains an optional separate companion. SIN's private trader profile does not replace global GAMMA trader files.
+- Core recognizes the audited ReDone North squad-target signature and disables HQ changes for that case. This is not a compatibility guarantee for every ReDone North version or every inherited module; do not assume the combination is supported.
+- Furniture and other spawned objects can persist in saves. Removing the mod does not remove its saved objects or roll back older NPCs, toolkit flags or serialized PDA markers. Keep a pre-installation save.
+- The crafting bench uses the installed GAMMA workshop and its tool rules. Giving tools to Dazhbog does not automatically supply tools to the bench.
 
-Preparation verified the import hashes, the exact additive SIN/UNISG comparison, both XML files using their declared encodings, and relevant file providers in the selected MO2 profile. The imported Russian XML remains Windows-1251.
+## Source, credits and validation
 
-**No game was launched and no in-game tests were performed.** The historical package README mentions an earlier Lua syntax check; that check was not repeated here. Profile order identifies expected file winners, but does not verify a running MO2 virtual filesystem, DLTX results or Lua wrapper order.
+The installable source is under `gamedata/`. The combined controller preserves the WALO/UNISG integration; the SIN lifecycle calls are additive. Credit belongs to the WALO, UNISG, Anomaly, GAMMA and companion-mod contributors for their respective work. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
-The repository is ready to develop Story Mode isolation while preserving Warfare. It is not a validated Story Mode compatibility fix. Existing saves may contain NPCs or effects from older versions; this baseline does not remove objects or migrate saves. No commit or push was made.
+See [CHANGELOG.md](CHANGELOG.md) for this release and [DEVELOPMENT.md](DEVELOPMENT.md) for the packaging command and verification limits. Maintainer tests are kept out of the MO2 archive. Local references, logs, saves and historical test packages are not part of the public source tree or release asset.
