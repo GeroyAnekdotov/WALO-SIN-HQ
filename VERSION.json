@@ -1,9 +1,17 @@
 {
   "project": "WALO SIN HQ",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "baseline": "SIN HQ 2.0 Core TEST",
   "package_type": "FULL_MO2",
   "history": [
+    {
+      "version": "2.0.2",
+      "change": "Stable independent WALO integration, confirmed in game with SIN alone and with optional UNISG. Gameplay identical to 2.0.2-test.1."
+    },
+    {
+      "version": "2.0.2-test.1",
+      "change": "Remove the inherited UNISG controller dependency; use an independent WALO lifecycle bridge without shipping warfare.script."
+    },
     {
       "version": "2.0.1",
       "change": "First stable release; tested gameplay retained, temporary medic diagnostic output removed."
@@ -18,6 +26,6 @@
     }
   ],
   "status": "stable",
-  "tag": "v2.0.1",
-  "tested_baseline": "2.0.1-test.2"
+  "tag": "v2.0.2",
+  "tested_baseline": "2.0.2-test.1"
 }

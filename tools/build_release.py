@@ -16,7 +16,7 @@ RUNTIME = (
     "gamedata/configs/scripts/red_forest/walo_sin_hq_services.ltx",
     "gamedata/configs/text/eng/walo_sin_hq_start.xml",
     "gamedata/configs/text/rus/walo_sin_hq_start.xml",
-    "gamedata/scripts/warfare.script",
+    "gamedata/scripts/zzzzzzz_walo_sin_hq_warfare_bridge.script",
     "gamedata/scripts/zzzzz_walo_greh_mine_trade_spots.script",
     "gamedata/scripts/zzzzzz_walo_sin_hq_core.script",
     "gamedata/scripts/zzzzzz_walo_sin_hq_dao_guard.script",
@@ -77,9 +77,9 @@ def validate():
                 raise ValueError(f"Temporary diagnostic output remains: {name}")
     if len(localized) != 2 or localized[0] != localized[1]:
         raise ValueError("English/Russian string IDs differ")
-    expected = "1d54b521ca3b6971255dbe1e3bab36555c0aed61925433f5e2fbb2fd85c502a5"
-    if hashlib.sha256(payload["gamedata/scripts/warfare.script"]).hexdigest() != expected:
-        raise ValueError("Combined WALO/UNISG controller differs from audited integration")
+    if any(b"walo_unisg_hq_native_v03" in payload[name] or b"isg_sim_squad_novice" in payload[name]
+           for name in RUNTIME):
+        raise ValueError("UNISG HQ implementation must not be bundled with SIN")
     return meta, payload
 
 
@@ -110,7 +110,7 @@ def main():
     (ROOT / "RELEASE_FILES_SHA256.txt").write_bytes(payload["RELEASE_FILES_SHA256.txt"])
     digest = hashlib.sha256(content).hexdigest()
     path.with_suffix(path.suffix + ".sha256").write_text(f"{digest}  {path.name}\n", encoding="utf-8")
-    print(f"PASS: {len(RUNTIME)} runtime files; XML/LTX/private dependencies; controller hash; {len(payload)} ZIP entries; CRC and source equality")
+    print(f"PASS: {len(RUNTIME)} runtime files; XML/LTX/private dependencies; no controller/UNISG implementation; {len(payload)} ZIP entries; CRC and source equality")
     print(path)
     print(f"SHA256: {digest}")
 

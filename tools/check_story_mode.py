@@ -50,16 +50,10 @@ def main():
         compile_lua(sources[key], "@" + filename)
         print("SYNTAX PASS:", filename)
 
-    # X-Ray's unchanged controller contains its nonstandard `continue` keyword.
-    # Stock Lua 5.1 cannot parse that dialect; prove byte equality instead.
-    controller = ROOT / "gamedata/scripts/warfare.script"
-    expected = next(
-        line.split()[0]
-        for line in (ROOT / "tests/import_baseline_sha256.txt").read_text().splitlines()
-        if line.endswith("gamedata/scripts/warfare.script")
-    )
-    assert hashlib.sha256(controller.read_bytes()).hexdigest() == expected
-    print("INTEGRITY PASS: unchanged combined warfare.script (X-Ray dialect)")
+    assert not (ROOT / "gamedata/scripts/warfare.script").exists()
+    compile_lua((ROOT / "gamedata/scripts/zzzzzzz_walo_sin_hq_warfare_bridge.script").read_text(),
+                "@zzzzzzz_walo_sin_hq_warfare_bridge.script")
+    print("INTEGRITY PASS: independent lifecycle bridge; no controller override")
 
     sources["logic"] = (args.reference_scripts / "xr_logic.script").read_text(encoding="cp1251")
     sources["task"] = runtime.table_from(read_task(

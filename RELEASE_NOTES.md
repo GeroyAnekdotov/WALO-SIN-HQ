@@ -1,20 +1,17 @@
-# WALO SIN HQ 2.0.1
+# WALO SIN HQ 2.0.2 — Independent release
 
-First stable SIN HQ 2.0 package, following the tested `2.0.1-test.2` build.
+SIN HQ works with **WALO 1.6.11 without UNISG installed**. UNISG Command & Operations v1.0.3 is an optional independent addition.
 
-The Red Forest mine headquarters includes WALO's native service integration, a furnished medical area and bar, a GAMMA crafting workbench, sleeping at the existing mattress, and the medic's table bypass and sitting restoration after local save/load.
+The author successfully tested WALO + SIN alone and WALO + both HQ mods on 2.0.2-test.1. Existing SIN HQ gameplay remains operational. Stable 2.0.2 contains exactly the same gameplay files; this promotion changes documentation and release metadata only.
 
-The author confirmed HQ services, furniture, crafting, sleeping, navigation, level transitions and save/load in game. Release checks cover Lua syntax, configuration integrity, mode isolation, restoration and archive consistency. These checks do not substitute for a full Story Mode/DRX playthrough, which is not claimed.
+## Install and upgrade
 
-## Install
+Install `WALO_SIN_HQ_2.0.2_FULL_MO2.zip` through MO2 and disable previous SIN packages. For an upgrade from 2.0.1, use a fresh mod directory: merging over the old package could leave its obsolete combined `warfare.script` behind.
 
-Download **WALO_SIN_HQ_2.0.1_FULL_MO2.zip**. Install it through MO2 and disable all older SIN HQ builds and patches. Keep **WALO 1.6.11** and **UNISG Command & Operations v1.0.3** enabled, with SIN HQ winning the combined `warfare.script` conflict. Restart the game after updating. Back up saves; no new game is required when updating from the tested `2.0.1-test.2` build.
+Keep WALO enabled. When using both HQ mods, UNISG's own `warfare.script` must win against WALO. SIN ships no controller override, so its relative priority against UNISG does not choose that file. No new game is required when upgrading from 2.0.2-test.1. Back up saves before updating.
 
-Added HQ functionality requires **Warfare ON / Story Mode OFF**. Original storyline definitions remain unchanged. Saved objects and older addon flags are not automatically removed when uninstalling. Read the README's compatibility section before using another controller override or ReDone North.
+SIN's added mechanics require Warfare ON / Story Mode OFF. NPC jobs, furnishing, navigation, save identifiers and Story Mode protections are unchanged. Existing objects or UNISG markers from older combined-controller saves are not deleted or migrated. Complete Story Mode/DRX playthrough coverage is not claimed.
 
-## Assets
+Targeted integration regression checks use audited native WALO/UNISG functions with mocked engine APIs. The installable ZIP is checked for required files, correct root paths, archive integrity, source equality and absence of `gamedata/scripts/warfare.script`.
 
-- `WALO_SIN_HQ_2.0.1_FULL_MO2.zip` — complete installable package.
-- `WALO_SIN_HQ_2.0.1_FULL_MO2.zip.sha256` — archive checksum.
-
-Credits and upstream licensing limitations are recorded in `THIRD_PARTY_NOTICES.md`. No blanket license for upstream code is granted by this release.
+Assets: `WALO_SIN_HQ_2.0.2_FULL_MO2.zip` and its `.sha256` sidecar. The published 2.0.1 release and tag are unchanged. Nothing is committed, tagged, pushed or published by the local build command.

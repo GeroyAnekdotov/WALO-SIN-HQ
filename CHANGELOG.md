@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.2 — Stable independent release
+
+- Removes the unintended mandatory UNISG dependency inherited by 2.0.1. SIN HQ now works with WALO 1.6.11 independently.
+- Supports optional UNISG Command & Operations v1.0.3 through the same tested WALO lifecycle bridge, without a bundled `warfare.script`.
+- Documents MO2 controller priority and clean installation when upgrading from the old combined package.
+- Gameplay is byte-for-byte identical to 2.0.2-test.1. The author confirmed SIN-only and combined-HQ gameplay; only documentation, version metadata and generated package manifests changed.
+- The published 2.0.1 release and tag are preserved.
+
+## 2.0.2-test.1 — Independent WALO integration candidate
+
+- Removes SIN's inherited WALO/UNISG `warfare.script` override and mandatory UNISG dependency.
+- Adds a scoped WALO lifecycle bridge compatible with stock WALO 1.6.11 or the unchanged UNISG v1.0.3 controller.
+- Keeps SIN jobs, positions, save identifiers and other gameplay modules intact.
+- Adds three-configuration integration checks with actual controller functions and mocked engine APIs. In-game verification is still required.
+- The published 2.0.1 release and tag are unchanged.
+
 ## 2.0.1 — First stable public release
 
 - Consolidates the tested SIN HQ 2.0 implementation for WALO 1.6.11 and UNISG Command & Operations v1.0.3.

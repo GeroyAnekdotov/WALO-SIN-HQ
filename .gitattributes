@@ -3,3 +3,8 @@
 
 # Preserve runtime encodings and line endings, including Windows-1251 XML.
 gamedata/** -text
+
+# Keep packaged metadata byte-identical to the verified release archive.
+/*.md -text
+/*.json -text
+/RELEASE_FILES_SHA256.txt -text

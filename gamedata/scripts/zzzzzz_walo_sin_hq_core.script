@@ -266,7 +266,7 @@ local function restore_live_smart_values()
     previous_capacity = nil
 end
 
--- Invoked by the combined WALO warfare.script on EVERY start, including Story.
+-- Invoked by the independent SIN lifecycle bridge on EVERY start, including Story.
 function on_walo_start()
     register_task_condition()
     restore_live_smart_values()

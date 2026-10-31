@@ -1,0 +1,73 @@
+-- SIN lifecycle integration for WALO 1.6.11, with or without the UNISG controller.
+-- No controller replacement, squad creation, save migration or UNISG calls.
+local installed_on, installed_levels
+local previous_fill, previous_first, wrapped_fill, wrapped_first, fill_context
+
+local function pack(...) return {n = select("#", ...), ...} end
+local function core() return zzzzzz_walo_sin_hq_core end
+
+local function install()
+    local w, levels = warfare, warfare_levels
+    if not (w and type(w.fill_start_position) == "function"
+        and type(w.actor_on_first_update) == "function"
+        and levels and type(levels.open_graph_gated_smarts) == "function") then
+        printf("[SIN HQ bridge] WALO lifecycle functions unavailable; hooks not installed")
+        return
+    end
+    if installed_on ~= w then
+        -- Remove our old callback identities if a new namespace replaced WALO.
+        if wrapped_fill then UnregisterScriptCallback("fill_start_position", wrapped_fill) end
+        if wrapped_first then UnregisterScriptCallback("actor_on_first_update", wrapped_first) end
+        previous_fill, previous_first = w.fill_start_position, w.actor_on_first_update
+        local native_fill, native_first = previous_fill, previous_first
+        wrapped_fill = function(...)
+            local old_context = fill_context
+            fill_context = {eligible = IsWarfare() and SIMBOARD and not SIMBOARD.start_position_filled}
+            local result = pack(pcall(native_fill, ...))
+            fill_context = old_context -- also clear the scope after a delegated error
+            if not result[1] then error(result[2], 0) end
+            return unpack(result, 2, result.n)
+        end
+        wrapped_first = function(...)
+            local result = pack(native_first(...))
+            core().apply_loaded() -- native/UNISG restoration first, before world updates
+            return unpack(result, 1, result.n)
+        end
+        w.fill_start_position, w.actor_on_first_update = wrapped_fill, wrapped_first
+        installed_on = w
+    end
+    if installed_levels ~= levels then
+        local native_graph = levels.open_graph_gated_smarts
+        levels.open_graph_gated_smarts = function(...)
+            local context = fill_context
+            if context and context.eligible and not context.applied and SIMBOARD.start_position_filled then
+                context.applied = true
+                -- Both audited controllers call this immediately after setting
+                -- start_position_filled, before random-start exit or squad seeding.
+                core().apply_new_game()
+            end
+            return native_graph(...)
+        end
+        installed_levels = levels
+    end
+    -- WALO may have registered its callback identities before this module's
+    -- on_game_start. If WALO starts later it registers the wrapped fields itself.
+    -- Native resetters also unregister these same fields. Do not add extra ticks.
+    UnregisterScriptCallback("fill_start_position", previous_fill)
+    UnregisterScriptCallback("actor_on_first_update", previous_first)
+    if w.fill_start_position ~= wrapped_fill then
+        UnregisterScriptCallback("fill_start_position", wrapped_fill)
+    end
+    if w.actor_on_first_update ~= wrapped_first then
+        UnregisterScriptCallback("actor_on_first_update", wrapped_first)
+    end
+    RegisterScriptCallback("fill_start_position", w.fill_start_position)
+    RegisterScriptCallback("actor_on_first_update", w.actor_on_first_update)
+end
+
+function on_game_start()
+    install()
+    -- Always reachable, including Story/non-Warfare and save switches. Startup
+    -- order does not matter: native WALO/UNISG startup does not mutate SIN's mine.
+    core().on_walo_start()
+end
